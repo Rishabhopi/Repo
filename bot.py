@@ -3,7 +3,7 @@ import re
 import requests
 import zipfile
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 # Function to download a single repository
 def download_repo(repo_url, download_path):
@@ -49,7 +49,7 @@ def download_repos(username, download_path):
     return True, "Repositories downloaded successfully."
 
 # Start command handler
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context):
     buttons = [
         [InlineKeyboardButton("GitHub", url="https://github.com"), 
          InlineKeyboardButton("Developer", url="https://t.me/rishu1286")],
@@ -63,36 +63,36 @@ def start(update: Update, context: CallbackContext):
         "2️⃣ A specific repository link (e.g., `https://github.com/octocat/Hello-World`).\n\n"
         "⚠️ Note: Ensure the repository or username exists and is public.\n"
     )
-    update.message.reply_text(start_message, parse_mode="Markdown", reply_markup=reply_markup)
+    await update.message.reply_text(start_message, parse_mode="Markdown", reply_markup=reply_markup)
 
 # Function to handle input
-def fetch_repos(update: Update, context: CallbackContext):
+async def fetch_repos(update: Update, context):
     input_text = update.message.text.strip()
     download_path = f"downloads/{update.message.chat_id}"
 
     # Check if input is a GitHub repository link
     if re.match(r"https?://github\.com/([^/]+)/([^/]+)", input_text):
-        update.message.reply_text("🔄 Fetching the repository...", parse_mode="Markdown")
+        await update.message.reply_text("🔄 Fetching the repository...", parse_mode="Markdown")
         success, result = download_repo(input_text, download_path)
 
         if not success:
-            update.message.reply_text(f"❌ {result}")
+            await update.message.reply_text(f"❌ {result}")
             return
 
         zip_path = result
         with open(zip_path, "rb") as file:
-            update.message.reply_document(
+            await update.message.reply_document(
                 file,
                 caption=f"✅ *Here is your repository:* `{input_text}`\n\n🔹 Powered by @rishu1286",
                 parse_mode="Markdown",
             )
 
     else:  # Assume it's a GitHub username
-        update.message.reply_text(f"🔄 Fetching repositories for GitHub username: *{input_text}*...", parse_mode="Markdown")
+        await update.message.reply_text(f"🔄 Fetching repositories for GitHub username: *{input_text}*...", parse_mode="Markdown")
         success, message = download_repos(input_text, download_path)
 
         if not success:
-            update.message.reply_text(f"❌ {message}")
+            await update.message.reply_text(f"❌ {message}")
             return
 
         zip_filename = f"{input_text}_repos.zip"
@@ -112,7 +112,7 @@ def fetch_repos(update: Update, context: CallbackContext):
         reply_markup = InlineKeyboardMarkup(buttons)
 
         with open(zip_path, "rb") as file:
-            update.message.reply_document(
+            await update.message.reply_document(
                 file,
                 caption=f"✅ *Here are the repositories for GitHub user:* `{input_text}`\n\n🔹 Powered by @rishu1286",
                 parse_mode="Markdown",
@@ -125,14 +125,12 @@ def fetch_repos(update: Update, context: CallbackContext):
 # Main function
 def main():
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Use environment variable for token
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    app = Application.builder().token(TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, fetch_repos))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_repos))
 
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
