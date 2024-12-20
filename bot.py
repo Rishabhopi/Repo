@@ -4,6 +4,10 @@ import requests
 import zipfile
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from flask import Flask, request
+
+# Flask app for health check and webhook
+flask_app = Flask(__name__)
 
 # Function to download a single repository
 def download_repo(repo_url, download_path):
@@ -122,15 +126,34 @@ async def fetch_repos(update: Update, context):
     # Cleanup
     os.system(f"rm -rf {download_path}")
 
+# Flask health check endpoint
+@flask_app.route('/health', methods=['GET'])
+def health_check():
+    return "OK", 200
+
+# Flask webhook endpoint
+@flask_app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    bot_app.update_queue.put(data)
+    return "OK", 200
+
 # Main function
-def main():
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Use environment variable for token
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_repos))
-
-    app.run_polling()
-
 if __name__ == "__main__":
-    main()
+    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    PORT = int(os.getenv("PORT", 5000))
+
+    # Telegram Bot Application
+    bot_app = Application.builder().token(TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_repos))
+
+    # Start Flask server
+    flask_app.run(host="0.0.0.0", port=PORT)
+    bot_app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="/webhook",
+        webhook_url=f"{WEBHOOK_URL}/webhook",
+    )
